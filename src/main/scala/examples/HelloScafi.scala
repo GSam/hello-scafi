@@ -11,15 +11,34 @@ import examples.MyIncarnation._
 
 // 3. Define an "aggregate program" using the ScaFi DSL by extending AggregateProgram and specifying a "main" expression
 class GradientProgram extends AggregateProgram {
-  def isSource: Boolean = sense("source")
-  /* hop gradient */
-  override def main(): Any = rep(Double.PositiveInfinity) { d =>
-    mux(isSource)(0.0)(foldhoodPlus(Double.PositiveInfinity)(Math.min)(nbr(d) + 1.0))
-  }
+  // Main program expression driving the ensemble
+  // This is run in a loop for each agent
+  // According to this expression, coordination messages are automatically generated
+  // The platform/middleware/simulator is responsible for coordination
+  override def main() = gradient(isSource)
+
+  // The gradient is the (self-adaptive) field of the minimum distances from source nodes
+  // `rep` is the construct for state transformation (remember the round-by-round loop behaviour)
+  // `mux` is a purely functional multiplexer (selects the first or second branch according to condition)
+  // `foldhoodPlus` folds over the neighbourhood (think like Scala's fold)
+  // (`Plus` means "without self"--with plain `foldhood`, the device itself is folded)
+  // `nbr(e)` denotes the values to be locally computed and shared with neighbours
+  // `nbrRange` is a sensor that, when folding, returns the distance wrt each neighbour
+  def gradient(source: Boolean): Double =
+    rep(Double.PositiveInfinity){ distance =>
+      mux(source) { 0.0 } {
+        foldhoodPlus(Double.PositiveInfinity)(Math.min)(nbr{distance}+nbrRange)
+      }
+    }
+
+  // A custom local sensor
+  def isSource = sense[Boolean]("sens1")
+  // A custom "neighbouring sensor"
+  def nbrRange = nbrvar[Double]("NBRRANGE")
 }
 
 // 4. In your program, implement an "execution loop" whereby your device or system executes the aggregate program
-object HelloScafi extends App {
+/*object HelloScafi extends App {
   val program = new GradientProgram()
   // Import standard sensors name define in incarnation
   val sensorsNames = new StandardSensorNames {}
@@ -64,4 +83,14 @@ object HelloScafi extends App {
       .foreach(nbr => state += nbr -> state(nbr).copy(exports = state(nbr).exports + (d -> export)))
     println(s"\tEXPORT: $export\n\tOUTPUT: ${export.root()}\n--------------")
   }
+}*/
+
+
+import it.unibo.scafi.simulation.frontend.{Launcher, Settings}
+
+object HelloScafi extends Launcher {
+  println("BLAH")
+  Settings.Sim_ProgramClass = "experiments.GradientProgram"
+  Settings.ShowConfigPanel = true
+  launch()
 }
